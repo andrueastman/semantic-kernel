@@ -160,12 +160,33 @@ public static class CopilotAgentPluginKernelExtensions
             var operationRunnerHttpClient = HttpClientProvider.GetHttpClient(openApiFunctionExecutionParameters?.HttpClient ?? kernel.Services.GetService<HttpClient>());
 #pragma warning restore CA2000
 
+            static IDictionary<string, string> CopilotAgentPluginHeaderFactory(RestApiOperation operation, IDictionary<string, object?> arguments, RestApiOperationRunOptions? options)
+            {
+                var defaultHeaders =  new Dictionary<string, string>
+                {
+                    ["SdkVersion"] = "CopilotAgentPlugins", // TODO verify format
+                    ["client-request-id"] = Guid.NewGuid().ToString()
+                };
+
+                // if the plugin had any headers for the operation, ensure they are added too.
+                var existingHeaderParameters = operation.Parameters.Where(static p => p.Location == RestApiParameterLocation.Header);
+                foreach (var existingHeader in existingHeaderParameters)
+                {
+                    if (arguments.TryGetValue(existingHeader.Name, out var argumentValue) && argumentValue is not null)
+                    {
+                        defaultHeaders[existingHeader.Name] = argumentValue.ToString();
+                    }
+                }
+                return defaultHeaders;
+            }
+
             var runner = new RestApiOperationRunner(
                 operationRunnerHttpClient,
                 openApiFunctionExecutionParameters?.AuthCallback,
                 openApiFunctionExecutionParameters?.UserAgent,
                 openApiFunctionExecutionParameters?.EnableDynamicPayload ?? false,
-                openApiFunctionExecutionParameters?.EnablePayloadNamespacing ?? true);
+                openApiFunctionExecutionParameters?.EnablePayloadNamespacing ?? true,
+                headersFactory: CopilotAgentPluginHeaderFactory);
 
             var info = OpenApiDocumentParser.ExtractRestApiInfo(filteredOpenApiDocument);
             var security = OpenApiDocumentParser.CreateRestApiOperationSecurityRequirements(filteredOpenApiDocument.SecurityRequirements);
